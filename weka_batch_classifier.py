@@ -5,12 +5,11 @@
 #@ Integer(label="Minimum blob area", required=true, value=0, stepSize=1) min_particle_area
 #@ String (visibility=MESSAGE, value="", required=false) only_for_visual2
 #@ Boolean(label="Show segmented images", required=true, value=False) show_segmented
-#@ Boolean(label="Also show / save blob detection images", value=True) save_blob_images
+#@ Boolean(label="Also show / save blob detection images", value=True) show_or_save_blob_images
 #@ File(label="Save segmented images (folder)", style="directory", required=false) segmented_folder
 #@ String (visibility=MESSAGE, value="", required=false) only_for_visual3
 #@ File(label="Save result file (CSV)", style="save", required=false) result_file
 #@ Boolean(label="Append settings to result file", description="Save the settings used for classification for future reference", value=true) append_settings
-#@ UIService ui
 
 import os
 from trainableSegmentation import WekaSegmentation
@@ -53,12 +52,12 @@ def main():
 	
 	for input_index, input_file in enumerate(input_files):
 		input_file_path = input_file.getAbsolutePath()
-		imp = IJ.openImage(input_file_path)
-		image_title = imp.getTitle()
+		input_image = IJ.openImage(input_file_path)
+		image_title = input_image.getTitle()
 		
 		# Apply classifier to image
-		IJ.log("Classifying image {}".format(imp.getTitle()))
-		classified = weka_seg.applyClassifier(imp)
+		IJ.log("Classifying image {}".format(image_title))
+		classified = weka_seg.applyClassifier(input_image)
 
 		# Apply lookup table to image to make classes visible
 		classified_vis = Duplicator().run(classified)
@@ -66,9 +65,11 @@ def main():
 		classified_vis.setLut(lut)
 		IJ.run(classified_vis, "RGB Color", "");
 		IJ.run(classified_vis, "Apply LUT", "");
+		classified_vis.setTitle(image_title + " Classification")
 
 		if show_segmented:
-			ui.show(classified_vis)
+			input_image.show()
+			classified_vis.show()
 
 		if segmented_folder is not None:
 			segmented_path = os.path.join(segmented_folder.getAbsolutePath(), os.path.splitext(image_title)[0] + "-segmented.tif")
@@ -76,7 +77,7 @@ def main():
 		
 		# Use histogram to calculate area per class
 		histogram = ImageStatistics.getStatistics(classified.getProcessor()).getHistogram()
-		image_pixels = imp.getWidth()*imp.getHeight();
+		image_pixels = input_image.getWidth()*input_image.getHeight();
 		
 		# Create ParticleAnalyzer
 		ParticleAnalyzer.setSummaryTable(classification_table)  # For some reason this is a static method for all particle analyzers
@@ -96,16 +97,16 @@ def main():
 			# Count blobs using ParticleAnalyzer
 			particle_analyzer.analyze(classified)
 
-			if save_blob_images:
+			if show_or_save_blob_images:
 				# Particle analyzer visualization image
 				particles_image = particle_analyzer.getOutputImage()
-				particles_image.setTitle(image_title + " Blobs of class: " + class_labels[i])
 	
 				# Overlay particle image over original
 				IJ.run(particles_image, "Invert LUT", "");
 				IJ.run(particles_image, "Apply LUT", "");
 				ic = ImageCalculator()
-				overlay_image = ic.run("Transparent-zero create", imp, particles_image);
+				overlay_image = ic.run("Transparent-zero create", input_image, particles_image);
+				overlay_image.setTitle(image_title + " Blobs of class: " + class_labels[i])
 	
 				# Show detected blobs
 				if show_segmented:
